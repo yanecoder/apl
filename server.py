@@ -1,10 +1,10 @@
 from flask import Flask, request
-from flask_socketio import SocketIO, join_room, leave_room, emit
+from flask_socketio import SocketIO, emit
 
 app = Flask(__name__)
 socketio = SocketIO(app, cors_allowed_origins="*")
 
-clients = {}  # id -> sid
+clients = {}
 
 @socketio.on('register')
 def handle_register(data):
