@@ -1,188 +1,133 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-  <meta charset="UTF-8">
-  <title>APL</title>
-  <style>
-    body {
-      font-family: sans-serif;
-      background: #0b0c10;
-      color: #eaf0f6;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 20px;
-    }
-
-    input,
-    button {
-      padding: 8px 12px;
-      margin: 5px;
-      border-radius: 6px;
-      border: none;
-      margin-bottom: 50px;
-      margin-top: 30px;
-    }
-
-    #videos {
-      display: flex;
-      gap: 10px;
-      margin-top: 10px;
-    }
-
-    video {
-      width: 640px;
-      height: 360px;
-      background: #000;
-      border-radius: 8px;
-    }
-
-    #controls {
-      display: flex;
-      gap: 10px;
-      margin-top: 10px;
-    }
-
-    #controls button {
-      background: none;
-      border: none;
-      cursor: pointer;
-      padding: 5px;
-      border-radius: 6px;
-      transition: background 0.2s;
-    }
-
-    #controls button:hover {
-      background: rgba(255, 255, 255, 0.1);
-    }
-
-    #controls svg {
-      width: 32px;
-      height: 32px;
-    }
-  </style>
+<meta charset="UTF-8">
+<title>APL</title>
+<style>
+body { font-family: sans-serif; background:#0b0c10; color:#eaf0f6; display:flex; flex-direction:column; align-items:center; padding:20px; }
+input, button { padding:8px 12px; margin:5px; border-radius:6px; border:none; margin-bottom:30px; margin-top:10px; }
+#videos { display:flex; gap:10px; margin-top:10px; }
+video { width:720px; height:405px; background:#000; border-radius:8px; }
+#controls { display:flex; gap:10px; margin-top:10px; }
+#controls button { background:none; border:none; cursor:pointer; padding:5px; border-radius:6px; color:#fff; font-weight:bold; transition:background 0.2s; }
+#controls button:hover { background: rgba(255,255,255,0.1); }
+</style>
 </head>
-
 <body>
-  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-  <h2>APL</h2>
-  <div>id: <b id="myId">—</b></div>
-  <div>
-    <input id="peerId" placeholder="Call id" />
-    <button id="callBtn">Connect</button>
-    <button id="hangBtn">Disconnect</button>
-  </div>
-  <div id="videos">
-    <video id="local" autoplay muted playsinline></video>
-    <video id="remote" autoplay playsinline></video>
-  </div>
-  <div id="controls">
-    <button id="camBtn" title="Camera">
-      <svg viewBox="0 0 24 24" fill="#eaf0f6">
-        <path
-          d="M17 10.5V6c0-1.1-0.9-2-2-2H5C3.9 4 3 4.9 3 6v12c0 1.1 0.9 2 2 2h10c1.1 0 2-0.9 2-2v-4.5l4 4v-11l-4 4z" />
-      </svg>
-    </button>
-    <button id="micBtn" title="Mic">
-      <svg viewBox="0 0 24 24" fill="#eaf0f6">
-        <path
-          d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3s-3 1.34-3 3v6c0 1.66 1.34 3 3 3zm5-3c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-0.49 6-3.39 6-6.92h-2z" />
-      </svg>
-    </button>
-  </div>
-  <pre id="log"></pre>
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 
-  <script>
-    const logEl = document.getElementById('log');
-    const log = m => { logEl.textContent += m + "\n"; }
+<h2>APL</h2>
+<div>id: <b id="myId">—</b></div>
+<div>
+  <input id="peerId" placeholder="Call id" />
+  <button id="callBtn">Connect</button>
+  <button id="hangBtn">Disconnect</button>
+</div>
 
-    const myId = Math.random().toString(36).slice(2, 8);
-    document.getElementById('myId').textContent = myId;
+<div id="videos">
+  <video id="local" autoplay muted playsinline></video>
+  <video id="remote" autoplay playsinline></video>
+</div>
 
-    const peerInput = document.getElementById('peerId');
-    const callBtn = document.getElementById('callBtn');
-    const hangBtn = document.getElementById('hangBtn');
-    const localVideo = document.getElementById('local');
-    const remoteVideo = document.getElementById('remote');
+<div id="controls">
+  <button id="camBtn">Cam: OFF</button>
+  <button id="micBtn">Mic: OFF</button>
+</div>
+<pre id="log"></pre>
 
-    let pc, localStream, remoteId = '';
+<script>
+const logEl = document.getElementById('log');
+const log = m => { logEl.textContent += m + "\n"; }
 
-    const socket = io('http://87.249.49.93:8443');
-    socket.on('connect', () => {
-      log('Socket.IO connected');
-      socket.emit('register', { id: myId });
-    });
-    socket.on('disconnect', () => log('Socket.IO disconnected'));
+const myId = Math.random().toString(36).slice(2,8);
+document.getElementById('myId').textContent = myId;
 
-    socket.on('signal', async (msg) => {
-      if (msg.type === 'offer') {
-        await ensurePC();
-        remoteId = msg.from;
-        await pc.setRemoteDescription(new RTCSessionDescription(msg.payload));
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        socket.emit('signal', { type: 'answer', to: remoteId, from: myId, payload: pc.localDescription });
-        log('Answer sent');
-      } else if (msg.type === 'answer') {
-        await pc.setRemoteDescription(new RTCSessionDescription(msg.payload));
-        log('Answer received');
-      } else if (msg.type === 'candidate') {
-        try { await pc.addIceCandidate(msg.payload); } catch (e) { log('ICE error'); }
-      } else if (msg.type === 'bye') {
-        if (pc) {
-          pc.getSenders().forEach(s => s.track && s.track.stop());
-          pc.close();
-          pc = null;
-        }
-        localVideo.srcObject = null;
-        remoteVideo.srcObject = null;
-        log('Call ended by remote');
-        remoteId = '';
-      }
-    });
+const peerInput = document.getElementById('peerId');
+const callBtn = document.getElementById('callBtn');
+const hangBtn = document.getElementById('hangBtn');
+const localVideo = document.getElementById('local');
+const remoteVideo = document.getElementById('remote');
 
-    async function ensurePC() {
-      if (pc) return;
-      pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
-      pc.onicecandidate = e => { if (e.candidate && remoteId) socket.emit('signal', { type: 'candidate', to: remoteId, from: myId, payload: e.candidate }); };
-      pc.ontrack = e => remoteVideo.srcObject = e.streams[0];
-      pc.onconnectionstatechange = () => log('PC state: ' + pc.connectionState);
-      localStream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720, frameRate: 60 }, audio: true });
-      localVideo.srcObject = localStream;
-      localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
-    }
+let pc, localStream=null, remoteId='', camOn=false, micOn=false;
 
-    callBtn.onclick = async () => {
-      remoteId = peerInput.value.trim();
-      if (!remoteId) { alert('Enter call id'); return; }
-      await ensurePC();
-      const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
-      await pc.setLocalDescription(offer);
-      socket.emit('signal', { type: 'offer', to: remoteId, from: myId, payload: pc.localDescription });
-      log('Offer sent to ' + remoteId);
-    };
+const socket = io('http://87.249.49.93:8443');
+socket.on('connect', () => { log('Socket.IO connected'); socket.emit('register', {id: myId}); });
+socket.on('disconnect', () => log('Socket.IO disconnected'));
 
-    hangBtn.onclick = () => {
-      if (pc) { pc.getSenders().forEach(s => s.track && s.track.stop()); pc.close(); pc = null; }
-      localVideo.srcObject = null; remoteVideo.srcObject = null;
-      if (remoteId) socket.emit('signal', { type: 'bye', to: remoteId });
-      log('Call ended');
-      remoteId = '';
-    };
+socket.on('signal', async msg => {
+  if(msg.type==='offer'){
+    remoteId = msg.from;
+    log(`Call from ${remoteId}`);
+    await ensurePC();
+    await pc.setRemoteDescription(new RTCSessionDescription(msg.payload));
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    socket.emit('signal',{type:'answer', to:remoteId, payload: pc.localDescription, from: myId});
+  } else if(msg.type==='answer'){
+    await pc.setRemoteDescription(new RTCSessionDescription(msg.payload));
+  } else if(msg.type==='candidate'){
+    try { await pc.addIceCandidate(msg.payload); } catch(e){}
+  } else if(msg.type==='bye'){
+    hangUp();
+    log('Call ended by remote');
+  }
+});
 
-    let camEnabled = true, micEnabled = true;
-    document.getElementById('camBtn').onclick = () => {
-      camEnabled = !camEnabled;
-      localStream.getVideoTracks().forEach(t => t.enabled = camEnabled);
-      document.getElementById('camBtn').querySelector('path').setAttribute('fill', camEnabled ? '#eaf0f6' : '#ff4d4d');
-    };
-    document.getElementById('micBtn').onclick = () => {
-      micEnabled = !micEnabled;
-      localStream.getAudioTracks().forEach(t => t.enabled = micEnabled);
-      document.getElementById('micBtn').querySelector('path').setAttribute('fill', micEnabled ? '#eaf0f6' : '#ff4d4d');
-    };
-  </script>
+async function ensurePC(){
+  if(pc) return;
+  pc = new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
+  pc.onicecandidate = e => { if(e.candidate && remoteId) socket.emit('signal',{type:'candidate', to:remoteId, payload:e.candidate, from:myId}); };
+  pc.ontrack = e => remoteVideo.srcObject = e.streams[0];
+}
+
+async function startLocal(){
+  if(localStream) return;
+  localStream = await navigator.mediaDevices.getUserMedia({
+    video:{width:1280,height:720,frameRate:60},
+    audio:true
+  });
+  localVideo.srcObject = localStream;
+  localStream.getVideoTracks().forEach(t=>{
+    t.enabled = camOn;
+    if(pc) pc.addTrack(t, localStream);
+  });
+  localStream.getAudioTracks().forEach(t=>{
+    t.enabled = micOn;
+    if(pc) pc.addTrack(t, localStream);
+  });
+}
+
+callBtn.onclick = async ()=>{
+  remoteId = peerInput.value.trim();
+  if(!remoteId){ alert('Enter call id'); return; }
+  log(`Call to ${remoteId}`);
+  await ensurePC();
+  await startLocal();
+  const offer = await pc.createOffer({offerToReceiveAudio:true, offerToReceiveVideo:true});
+  await pc.setLocalDescription(offer);
+  socket.emit('signal',{type:'offer', to:remoteId, payload:offer, from:myId});
+};
+
+function hangUp(){
+  if(pc){ pc.getSenders().forEach(s=>s.track && s.track.stop()); pc.close(); pc=null; }
+  if(localStream) localStream.getTracks().forEach(t=>t.stop());
+  localVideo.srcObject=null; remoteVideo.srcObject=null;
+  if(remoteId) socket.emit('signal',{type:'bye', to:remoteId, from:myId});
+}
+hangBtn.onclick = hangUp;
+
+document.getElementById('camBtn').onclick = async ()=>{
+  camOn = !camOn;
+  if(!localStream) await startLocal();
+  localStream.getVideoTracks().forEach(t=>t.enabled=camOn);
+  document.getElementById('camBtn').textContent = `Cam: ${camOn?'ON':'OFF'}`;
+};
+document.getElementById('micBtn').onclick = async ()=>{
+  micOn = !micOn;
+  if(!localStream) await startLocal();
+  localStream.getAudioTracks().forEach(t=>t.enabled=micOn);
+  document.getElementById('micBtn').textContent = `Mic: ${micOn?'ON':'OFF'}`;
+};
+</script>
 </body>
-
 </html>
