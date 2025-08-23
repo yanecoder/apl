@@ -51,7 +51,10 @@ const remoteVideo = document.getElementById('remote');
 let pc, localStream=null, remoteId='', camOn=false, micOn=false;
 
 const socket = io('http://87.249.49.93:8443');
-socket.on('connect', () => { log('Socket.IO connected'); socket.emit('register', {id: myId}); });
+socket.on('connect', () => { 
+  log('Socket.IO connected'); 
+  socket.emit('register', {id: myId}); 
+});
 socket.on('disconnect', () => log('Socket.IO disconnected'));
 
 socket.on('signal', async msg => {
@@ -68,15 +71,20 @@ socket.on('signal', async msg => {
   } else if(msg.type==='candidate'){
     try { await pc.addIceCandidate(msg.payload); } catch(e){}
   } else if(msg.type==='bye'){
-    hangUp();
-    log('Call ended by remote');
+    if(pc){ 
+      hangUp(false); // Не отправляем повторный bye
+      log('Call ended by remote');
+    }
   }
 });
 
 async function ensurePC(){
   if(pc) return;
   pc = new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
-  pc.onicecandidate = e => { if(e.candidate && remoteId) socket.emit('signal',{type:'candidate', to:remoteId, payload:e.candidate, from:myId}); };
+  pc.onicecandidate = e => { 
+    if(e.candidate && remoteId) 
+      socket.emit('signal',{type:'candidate', to:remoteId, payload:e.candidate, from:myId}); 
+  };
   pc.ontrack = e => remoteVideo.srcObject = e.streams[0];
 }
 
@@ -105,16 +113,22 @@ callBtn.onclick = async ()=>{
   await startLocal();
   const offer = await pc.createOffer({offerToReceiveAudio:true, offerToReceiveVideo:true});
   await pc.setLocalDescription(offer);
-  socket.emit('signal',{type:'offer', to:remoteId, payload:offer, from:myId});
+  socket.emit('signal',{type:'offer', to:remoteId, payload:offer, from: myId});
 };
 
-function hangUp(){
-  if(pc){ pc.getSenders().forEach(s=>s.track && s.track.stop()); pc.close(); pc=null; }
+function hangUp(sendBye = true){
+  if(pc){ 
+    pc.getSenders().forEach(s=>s.track && s.track.stop()); 
+    pc.close(); 
+    pc=null; 
+  }
   if(localStream) localStream.getTracks().forEach(t=>t.stop());
-  localVideo.srcObject=null; remoteVideo.srcObject=null;
-  if(remoteId) socket.emit('signal',{type:'bye', to:remoteId, from:myId});
+  localVideo.srcObject=null; 
+  remoteVideo.srcObject=null;
+  if(sendBye && remoteId) socket.emit('signal',{type:'bye', to:remoteId, from:myId});
+  remoteId = ''; // сброс
 }
-hangBtn.onclick = hangUp;
+hangBtn.onclick = () => hangUp();
 
 document.getElementById('camBtn').onclick = async ()=>{
   camOn = !camOn;
