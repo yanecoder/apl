@@ -51,10 +51,7 @@ const remoteVideo = document.getElementById('remote');
 let pc, localStream=null, remoteId='', camOn=false, micOn=false;
 
 const socket = io('http://87.249.49.93:8443');
-socket.on('connect', () => { 
-  log('Socket.IO connected'); 
-  socket.emit('register', {id: myId}); 
-});
+socket.on('connect', () => { log('Socket.IO connected'); socket.emit('register', {id: myId}); });
 socket.on('disconnect', () => log('Socket.IO disconnected'));
 
 socket.on('signal', async msg => {
@@ -71,74 +68,63 @@ socket.on('signal', async msg => {
   } else if(msg.type==='candidate'){
     try { await pc.addIceCandidate(msg.payload); } catch(e){}
   } else if(msg.type==='bye'){
-    if(pc){ 
-      hangUp(false); // Не отправляем повторный bye
-      log('Call ended by remote');
-    }
+    hangUp(false);
+    log('Call ended by remote');
   }
 });
 
 async function ensurePC(){
   if(pc) return;
   pc = new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
-  pc.onicecandidate = e => { 
-    if(e.candidate && remoteId) 
-      socket.emit('signal',{type:'candidate', to:remoteId, payload:e.candidate, from:myId}); 
-  };
+  pc.onicecandidate = e => { if(e.candidate && remoteId) socket.emit('signal',{type:'candidate', to:remoteId, payload:e.candidate, from:myId}); };
   pc.ontrack = e => remoteVideo.srcObject = e.streams[0];
+
+  if(localStream){
+    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+  }
 }
 
 async function startLocal(){
   if(localStream) return;
   localStream = await navigator.mediaDevices.getUserMedia({
-    video:{width:1280,height:720,frameRate:60},
+    video:{width:1280,height:720,frameRate:30},
     audio:true
   });
   localVideo.srcObject = localStream;
-  localStream.getVideoTracks().forEach(t=>{
-    t.enabled = camOn;
-    if(pc) pc.addTrack(t, localStream);
-  });
-  localStream.getAudioTracks().forEach(t=>{
-    t.enabled = micOn;
-    if(pc) pc.addTrack(t, localStream);
-  });
+
+  localStream.getVideoTracks().forEach(t=>t.enabled = false);
+  localStream.getAudioTracks().forEach(t=>t.enabled = false);
 }
 
 callBtn.onclick = async ()=>{
   remoteId = peerInput.value.trim();
   if(!remoteId){ alert('Enter call id'); return; }
   log(`Call to ${remoteId}`);
-  await ensurePC();
   await startLocal();
+  await ensurePC();
   const offer = await pc.createOffer({offerToReceiveAudio:true, offerToReceiveVideo:true});
   await pc.setLocalDescription(offer);
-  socket.emit('signal',{type:'offer', to:remoteId, payload:offer, from: myId});
+  socket.emit('signal',{type:'offer', to:remoteId, payload:offer, from:myId});
 };
 
-function hangUp(sendBye = true){
-  if(pc){ 
-    pc.getSenders().forEach(s=>s.track && s.track.stop()); 
-    pc.close(); 
-    pc=null; 
-  }
+function hangUp(sendBye=true){
+  if(pc){ pc.getSenders().forEach(s=>s.track && s.track.stop()); pc.close(); pc=null; }
   if(localStream) localStream.getTracks().forEach(t=>t.stop());
-  localVideo.srcObject=null; 
-  remoteVideo.srcObject=null;
+  localStream=null;
+  localVideo.srcObject=null; remoteVideo.srcObject=null;
   if(sendBye && remoteId) socket.emit('signal',{type:'bye', to:remoteId, from:myId});
-  remoteId = ''; // сброс
 }
-hangBtn.onclick = () => hangUp();
+hangBtn.onclick = ()=>hangUp(true);
 
 document.getElementById('camBtn').onclick = async ()=>{
-  camOn = !camOn;
   if(!localStream) await startLocal();
+  camOn = !camOn;
   localStream.getVideoTracks().forEach(t=>t.enabled=camOn);
   document.getElementById('camBtn').textContent = `Cam: ${camOn?'ON':'OFF'}`;
 };
 document.getElementById('micBtn').onclick = async ()=>{
-  micOn = !micOn;
   if(!localStream) await startLocal();
+  micOn = !micOn;
   localStream.getAudioTracks().forEach(t=>t.enabled=micOn);
   document.getElementById('micBtn').textContent = `Mic: ${micOn?'ON':'OFF'}`;
 };
